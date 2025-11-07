@@ -21,6 +21,7 @@ import asyncio
 import sqlite3
 import threading
 from pathlib import Path
+from durability import DurabilityManager
 
 # Configure logging
 logging.basicConfig(
@@ -337,6 +338,7 @@ class ReplayStore:
     def __init__(self, db_path: str = "context_replay.db"):
         self.db_path = db_path
         self._lock = threading.Lock()
+        self.durability = DurabilityManager(db_path)
         self._init_database()
     
     def _init_database(self):
@@ -344,6 +346,9 @@ class ReplayStore:
         with self._lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            
+            # Initialize durability features (WAL, recovery)
+            self.durability.initialize(conn)
             
             # Create event traces table
             cursor.execute("""
@@ -366,6 +371,10 @@ class ReplayStore:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_event_type ON event_traces(event_type)")
             
             conn.commit()
+            
+            # Notify durability manager of transaction
+            self.durability.on_transaction(conn)
+            
             conn.close()
             logger.info(f"Replay store initialized at {self.db_path}")
     
@@ -376,10 +385,13 @@ class ReplayStore:
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
                 
+                # Calculate TTL expiry
+                expires_at = self.durability.ttl_manager.calculate_expiry()
+                
                 cursor.execute("""
                     INSERT INTO event_traces 
-                    (trace_id, person_id, session_id, event_type, timestamp, event_data, context_snapshot)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (trace_id, person_id, session_id, event_type, timestamp, event_data, context_snapshot, expires_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     trace.trace_id,
                     trace.person_id,
@@ -387,10 +399,15 @@ class ReplayStore:
                     trace.event_type,
                     trace.timestamp.isoformat(),
                     json.dumps(trace.event_data),
-                    json.dumps(trace.context_snapshot) if trace.context_snapshot else None
+                    json.dumps(trace.context_snapshot) if trace.context_snapshot else None,
+                    expires_at
                 ))
                 
                 conn.commit()
+                
+                # Notify durability manager of transaction
+                self.durability.on_transaction(conn)
+                
                 conn.close()
                 return True
                 
@@ -901,6 +918,63 @@ async def get_replay_stats():
         logger.error(f"Error getting replay stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get replay stats")
 
+@app.get("/durability/status")
+async def get_durability_status():
+    """Get durability features status (WAL, TTL, PII scrubbing, recovery)"""
+    try:
+        with context_service.replay_store._lock:
+            conn = sqlite3.connect(context_service.replay_store.db_path)
+            status = context_service.replay_store.durability.get_status(conn)
+            conn.close()
+        
+        return {
+            **status,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting durability status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get durability status")
+
+@app.post("/durability/ttl/cleanup")
+async def trigger_ttl_cleanup():
+    """Manually trigger TTL cleanup"""
+    try:
+        with context_service.replay_store._lock:
+            conn = sqlite3.connect(context_service.replay_store.db_path)
+            deleted_count = context_service.replay_store.durability.ttl_manager.cleanup_expired(conn)
+            conn.close()
+        
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during TTL cleanup: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to perform TTL cleanup")
+
+@app.post("/durability/pii/scrub")
+async def trigger_pii_scrubbing(batch_size: int = 100):
+    """Manually trigger PII scrubbing"""
+    try:
+        with context_service.replay_store._lock:
+            conn = sqlite3.connect(context_service.replay_store.db_path)
+            scrubbed_count = context_service.replay_store.durability.pii_scrubber.scrub_old_records(conn, batch_size)
+            conn.close()
+        
+        return {
+            "success": True,
+            "scrubbed_count": scrubbed_count,
+            "batch_size": batch_size,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error during PII scrubbing: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to perform PII scrubbing")
+
 @app.websocket("/context/subscribe/{person_id}")
 async def websocket_context_subscribe(websocket: WebSocket, person_id: str):
     """WebSocket endpoint for real-time context updates"""
@@ -920,14 +994,36 @@ async def websocket_context_subscribe(websocket: WebSocket, person_id: str):
         if not context_service.websocket_connections[person_id]:
             del context_service.websocket_connections[person_id]
 
+@app.get("/healthz")
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Liveness check - is the service alive?"""
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": "unison-context-graph",
         "version": "1.0.0"
+    }
+
+@app.get("/readyz")
+@app.get("/ready")
+async def readiness_check():
+    """Readiness check - is the service ready to serve traffic?"""
+    # Check if context service is initialized
+    if not hasattr(context_service, 'context_store'):
+        raise HTTPException(
+            status_code=503,
+            detail="Service not ready - context store not initialized"
+        )
+    
+    return {
+        "status": "ready",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "unison-context-graph",
+        "dependencies": {
+            "context_store": "initialized",
+            "fusion_engine": "ready"
+        }
     }
 
 @app.get("/health/sensors")
