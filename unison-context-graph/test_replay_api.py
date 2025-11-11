@@ -8,6 +8,12 @@ import json
 import requests
 from datetime import datetime
 import uuid
+import os
+import pytest
+
+# Skip this integration test in CI where backend services are not available
+if os.getenv("CI", "false").lower() == "true" or os.getenv("GITHUB_ACTIONS", "false").lower() == "true":
+    pytest.skip("Skipping integration tests in CI environment", allow_module_level=True)
 
 # Configuration
 BASE_URL = "http://localhost:8081"
