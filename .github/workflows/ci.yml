@@ -85,7 +85,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install -e unison-common
+          python -m pip install "git+https://github.com/project-unisonOS/unison-common.git@main"
           python -m pip install -r unison-policy/requirements.txt
           python -m pip install pytest-cov pytest-rerunfailures
       - name: Run tests (unison-policy)
@@ -121,7 +121,7 @@ jobs:
           python -m pip install --upgrade pip wheel
       - name: Install project deps
         run: |
-          python -m pip install -e unison-common
+          python -m pip install "git+https://github.com/project-unisonOS/unison-common.git@main"
           python -m pip install -r ${{ matrix.service }}/requirements.txt
           python -m pip install pytest-rerunfailures
       - name: Run tests with consent enabled (${{ matrix.service }})
