@@ -37,6 +37,8 @@ jobs:
           python -m pip install "git+https://github.com/project-unisonOS/unison-common.git@main"
           python -m pip install -r ${{ matrix.service }}/requirements.txt
           python -m pip install pytest-cov pytest-rerunfailures
+      - name: Enforce timezone-aware datetimes
+        run: python scripts/check_no_utcnow.py
       - name: Run tests (${{ matrix.service }})
         run: |
           (cd ${{ matrix.service }} && pytest -q --maxfail=1 --durations=15 --reruns 1)
@@ -80,6 +82,8 @@ jobs:
       - name: Normalize requirements to use VCS unison-common
         run: |
           sed -i 's#\.{2}/unison-common/dist/unison_common-0\.1\.0-py3-none-any\.whl#git+https://github.com/project-unisonOS/unison-common.git@main#g' */requirements.txt || true
+      - name: Enforce timezone-aware datetimes
+        run: python scripts/check_no_utcnow.py
       - name: Run tests (unison-policy)
         working-directory: unison-policy
         run: pytest -q --maxfail=1 --durations=15 --reruns 1
@@ -117,6 +121,8 @@ jobs:
           python -m pip install "git+https://github.com/project-unisonOS/unison-common.git@main"
           python -m pip install -r ${{ matrix.service }}/requirements.txt
           python -m pip install pytest-rerunfailures
+      - name: Enforce timezone-aware datetimes
+        run: python scripts/check_no_utcnow.py
       - name: Run tests with consent enabled (${{ matrix.service }})
         run: |
           (cd ${{ matrix.service }} && pytest -q --maxfail=1 --durations=15 --reruns 1)

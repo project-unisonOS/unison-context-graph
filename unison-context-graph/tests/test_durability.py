@@ -14,8 +14,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 
-# Add src to path
+# Add src and common packages to path
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(REPO_ROOT / "unison-common" / "src"))
 
 from durability import (
     DurabilityManager,
@@ -25,6 +27,7 @@ from durability import (
     PIIScrubber,
     RecoveryManager
 )
+from unison_common.datetime_utils import now_utc, isoformat_utc
 
 
 @pytest.fixture
@@ -101,7 +104,7 @@ def test_wal_checkpoint(temp_db):
     cursor.execute("""
         INSERT INTO event_traces (trace_id, person_id, session_id, event_type, timestamp, event_data)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, ('test1', 'user1', 'session1', 'test', datetime.utcnow().isoformat(), '{}'))
+    """, ('test1', 'user1', 'session1', 'test', isoformat_utc(), '{}'))
     conn.commit()
     
     # Perform checkpoint
@@ -173,7 +176,7 @@ def test_ttl_calculate_expiry(temp_db):
     
     # Parse and verify
     expiry_dt = datetime.fromisoformat(expiry)
-    now = datetime.utcnow()
+    now = now_utc()
     diff = (expiry_dt - now).days
     
     assert 29 <= diff <= 31  # Allow 1 day tolerance
@@ -189,20 +192,20 @@ def test_ttl_cleanup_expired(temp_db):
     cursor = conn.cursor()
     
     # Insert expired record
-    expired_date = (datetime.utcnow() - timedelta(days=1)).isoformat()
+    expired_date = (now_utc() - timedelta(days=1)).isoformat()
     cursor.execute("""
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ('expired1', 'user1', 'session1', 'test', datetime.utcnow().isoformat(), '{}', expired_date))
+    """, ('expired1', 'user1', 'session1', 'test', isoformat_utc(), '{}', expired_date))
     
     # Insert non-expired record
-    future_date = (datetime.utcnow() + timedelta(days=30)).isoformat()
+    future_date = (now_utc() + timedelta(days=30)).isoformat()
     cursor.execute("""
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ('active1', 'user1', 'session1', 'test', datetime.utcnow().isoformat(), '{}', future_date))
+    """, ('active1', 'user1', 'session1', 'test', isoformat_utc(), '{}', future_date))
     
     conn.commit()
     
@@ -337,7 +340,7 @@ def test_pii_scrub_record(temp_db):
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, ('test1', 'user_12345', 'session1', 'test', datetime.utcnow().isoformat(), event_data))
+    """, ('test1', 'user_12345', 'session1', 'test', isoformat_utc(), event_data))
     
     conn.commit()
     
@@ -374,7 +377,7 @@ def test_pii_scrub_old_records(temp_db):
     cursor = conn.cursor()
     
     # Insert old record (> 90 days)
-    old_date = (datetime.utcnow() - timedelta(days=100)).isoformat()
+    old_date = (now_utc() - timedelta(days=100)).isoformat()
     cursor.execute("""
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data, created_at)
@@ -382,7 +385,7 @@ def test_pii_scrub_old_records(temp_db):
     """, ('old1', 'user_old', 'session1', 'test', old_date, '{"email": "old@example.com"}', old_date))
     
     # Insert recent record
-    recent_date = datetime.utcnow().isoformat()
+    recent_date = isoformat_utc()
     cursor.execute("""
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data, created_at)
@@ -443,7 +446,7 @@ def test_recovery_check_for_wal(temp_db):
     cursor.execute("""
         INSERT INTO event_traces (trace_id, person_id, session_id, event_type, timestamp, event_data)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, ('test1', 'user1', 'session1', 'test', datetime.utcnow().isoformat(), '{}'))
+    """, ('test1', 'user1', 'session1', 'test', isoformat_utc(), '{}'))
     conn.commit()
     conn.close()
     
@@ -468,7 +471,7 @@ def test_recovery_perform(temp_db):
     cursor.execute("""
         INSERT INTO event_traces (trace_id, person_id, session_id, event_type, timestamp, event_data)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, ('test1', 'user1', 'session1', 'test', datetime.utcnow().isoformat(), '{}'))
+    """, ('test1', 'user1', 'session1', 'test', isoformat_utc(), '{}'))
     conn.commit()
     conn.close()
     
@@ -558,7 +561,7 @@ def test_full_lifecycle(temp_db):
         INSERT INTO event_traces 
         (trace_id, person_id, session_id, event_type, timestamp, event_data, expires_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ('test1', 'user_test', 'session1', 'test', datetime.utcnow().isoformat(), event_data, expires_at))
+    """, ('test1', 'user_test', 'session1', 'test', isoformat_utc(), event_data, expires_at))
     
     conn.commit()
     manager.on_transaction(conn)

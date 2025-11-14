@@ -32,7 +32,7 @@ def test_data_models():
     
     try:
         from src.main import EventTrace, ReplayRequest, TraceListResponse
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         # Test EventTrace
         trace = EventTrace(
@@ -40,7 +40,7 @@ def test_data_models():
             person_id="user-456",
             session_id="session-789",
             event_type="context_update",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             event_data={"test": "data"},
             context_snapshot={"context": "snapshot"}
         )
@@ -77,7 +77,7 @@ def test_replay_store():
     
     try:
         from src.main import ReplayStore, EventTrace
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         # Create temporary database
         with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
@@ -93,7 +93,7 @@ def test_replay_store():
                 person_id="test-user",
                 session_id="test-session",
                 event_type="context_update",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 event_data={"test": "event_data"},
                 context_snapshot={"test": "context"}
             )
@@ -141,9 +141,9 @@ def test_context_service():
     print("\n🔧 Testing ContextGraphService integration...")
     
     try:
-        from src.main import ContextGraphService, ContextUpdateRequest
+        from src.main import ContextGraphService, ContextGraphSettings, ContextUpdateRequest
         
-        service = ContextGraphService()
+        service = ContextGraphService(ContextGraphSettings.from_env())
         print("✅ ContextGraphService initialized with replay store")
         
         # Test that replay store is attached
