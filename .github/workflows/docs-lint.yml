@@ -1,0 +1,73 @@
+name: Docs Lint
+
+on:
+  pull_request:
+    paths:
+      - 'unison-docs/**/*.md'
+      - 'unison-docs/.markdownlint.json'
+      - 'unison-docs/.markdownlintignore'
+      - 'unison-docs/.remarkrc.mjs'
+      - 'unison-docs/package.json'
+      - 'unison-docs/package-lock.json'
+      - 'DOCUMENTATION_UPDATE_PLAN.md'
+      - 'DOCUMENTATION_UPDATE_SUMMARY.md'
+      - '.github/pull_request_template.md'
+  push:
+    branches: [ main ]
+    paths:
+      - 'unison-docs/**/*.md'
+      - 'unison-docs/.markdownlint.json'
+      - 'unison-docs/.markdownlintignore'
+      - 'unison-docs/.remarkrc.mjs'
+      - 'unison-docs/package.json'
+      - 'unison-docs/package-lock.json'
+      - 'DOCUMENTATION_UPDATE_PLAN.md'
+      - 'DOCUMENTATION_UPDATE_SUMMARY.md'
+      - '.github/pull_request_template.md'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: unison-docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'unison-docs/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run markdownlint
+        run: npm run lint:markdownlint
+
+      - name: Run remark
+        run: npm run lint:remark
+
+      - name: Run markdownlint (workspace docs)
+        run: >
+          npx markdownlint-cli2
+          "../DOCUMENTATION_UPDATE_PLAN.md"
+          "../DOCUMENTATION_UPDATE_SUMMARY.md"
+          "../.github/pull_request_template.md"
+
+      - name: Run remark (workspace docs)
+        run: >
+          npx remark
+          --ext .md
+          ../DOCUMENTATION_UPDATE_PLAN.md
+          ../DOCUMENTATION_UPDATE_SUMMARY.md
+          ../.github/pull_request_template.md
+
+      - name: Run misspell
+        run: |
+          curl -sSL https://github.com/client9/misspell/releases/latest/download/misspell_linux_amd64 -o misspell
+          chmod +x misspell
+          ./misspell -error $(git ls-files '*.md')

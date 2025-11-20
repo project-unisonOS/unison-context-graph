@@ -67,6 +67,39 @@ Response:
 }
 ```
 
+### Grafana / Prometheus Export
+
+Durability and replay metrics are exposed in Prometheus text format so Grafana can scrape them directly:
+
+```bash
+GET /metrics
+```
+
+Sample output:
+
+```
+# HELP unison_context_graph_replay_events_total Total replayable context events stored in SQLite.
+# TYPE unison_context_graph_replay_events_total gauge
+unison_context_graph_replay_events_total 42
+# HELP unison_context_graph_durability_wal_checkpoints Durability metric 'wal_checkpoints'.
+# TYPE unison_context_graph_durability_wal_checkpoints gauge
+unison_context_graph_durability_wal_checkpoints 3
+# HELP unison_context_graph_wal_size_bytes Current WAL file size in bytes.
+# TYPE unison_context_graph_wal_size_bytes gauge
+unison_context_graph_wal_size_bytes 8192
+```
+
+Add the endpoint to your Prometheus scrape configuration:
+
+```yaml
+- job_name: unison-context-graph
+  scrape_interval: 30s
+  static_configs:
+    - targets: ["context-graph:8081"]
+```
+
+The exported series include replay totals, WAL file size, durability counters (checkpoints, recovery attempts), TTL activity, and PII scrubbing statistics, enabling dashboards and alerts aligned with the Section 3.3 reliability goals.
+
 ## Crash Recovery
 
 ### Automatic Recovery

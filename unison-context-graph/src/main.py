@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from context_graph import Config, ContextGraphService, ContextGraphSettings, register_routes
+from unison_common import ContextBatonManager, ContextBatonSettings
 from context_graph.models import (
     ContextDimension,
     ContextPreferences,
@@ -44,7 +45,9 @@ app.add_middleware(
 )
 
 context_service = ContextGraphService(settings=settings)
-register_routes(app, context_service)
+baton_manager = ContextBatonManager(ContextBatonSettings())
+app.state.baton_manager = baton_manager
+register_routes(app, context_service, baton_manager=baton_manager)
 
 __all__ = [
     "app",
