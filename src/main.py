@@ -9,7 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from context_graph import Config, ContextGraphService, ContextGraphSettings, register_routes
-from unison_common import ContextBatonManager, ContextBatonSettings
+
+try:
+    from unison_common import ContextBatonManager, ContextBatonSettings
+except ImportError:
+    class ContextBatonSettings:  # type: ignore
+        pass
+
+    class ContextBatonManager:  # type: ignore
+        def __init__(self, settings: ContextBatonSettings | None = None) -> None:
+            self.settings = settings
 from context_graph.models import (
     ContextDimension,
     ContextPreferences,
@@ -22,6 +31,11 @@ from context_graph.models import (
     TraceListResponse,
 )
 from context_graph.replay import ReplayStore
+
+try:
+    from unison_common import BatonMiddleware
+except Exception:  # pragma: no cover - middleware optional in devstack
+    BatonMiddleware = None  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +62,17 @@ context_service = ContextGraphService(settings=settings)
 baton_manager = ContextBatonManager(ContextBatonSettings())
 app.state.baton_manager = baton_manager
 register_routes(app, context_service, baton_manager=baton_manager)
+if BatonMiddleware:
+    app.add_middleware(BatonMiddleware)
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    # Gracefully stop background durability jobs and close SQLite connections.
+    try:
+        context_service._sqlite_replay.close()
+    except Exception:
+        logger.exception("Failed to close replay store cleanly during shutdown")
 
 __all__ = [
     "app",

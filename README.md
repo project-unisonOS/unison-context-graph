@@ -198,6 +198,23 @@ WebSocket endpoint for real-time context updates.
 - **Communication Readiness**: Available, busy, do-not-disturb, offline
 - **Relationship Context**: Professional, personal, collaborative, hierarchical
 
+## Durability, Replay, and Metrics
+
+The context graph persists traces to SQLite with durability features from `unison-common`:
+- **WAL + crash recovery**: Write-ahead logging with checksum verification and recovery on startup.
+- **TTL cleanup**: Automatic expiry (`DURABILITY_TTL_DAYS`, default 30) and `/durability/run_ttl` to force cleanup.
+- **PII scrubbing**: Optional scrubbing (`DURABILITY_PII_AFTER_DAYS`, default 90) and `/durability/run_pii` to force a run.
+- **Metrics**: `/durability/status` returns WAL/TTL/PII status and `/metrics` returns durability counters (checkpoints, TTL deletes, scrubs).
+
+Environment variables:
+- `CONTEXT_GRAPH_DB_PATH` – SQLite path (default `data/context_replay.db`)
+- `DURABILITY_WAL_ENABLED`, `DURABILITY_WAL_CHECKPOINT`, `DURABILITY_WAL_SYNC`
+- `DURABILITY_TTL_ENABLED`, `DURABILITY_TTL_DAYS`, `DURABILITY_TTL_INTERVAL`
+- `DURABILITY_PII_ENABLED`, `DURABILITY_PII_AFTER_DAYS`, `DURABILITY_PII_INTERVAL`
+
+Lifecycle:
+- Durability is initialized with the service and gracefully shut down on FastAPI shutdown (WAL checkpoint, TTL/PII workers stopped).
+
 ### Personal Context
 - **Cognitive State**: Alertness, fatigue, stress, creativity level
 - **Emotional State**: Motivated, frustrated, satisfied, anxious
@@ -342,36 +359,78 @@ context_dimensions:
 
 ### Docker Configuration
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y gcc g++ git curl && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir \
+        opentelemetry-api==1.21.0 \
+        opentelemetry-sdk==1.21.0 \
+        opentelemetry-proto==1.21.0 \
+        opentelemetry-exporter-jaeger==1.21.0 \
+        opentelemetry-exporter-jaeger-proto-grpc==1.21.0 \
+        opentelemetry-exporter-jaeger-thrift==1.21.0 \
+        opentelemetry-exporter-otlp==1.21.0 \
+        opentelemetry-exporter-otlp-proto-grpc==1.21.0 \
+        opentelemetry-exporter-otlp-proto-http==1.21.0 \
+        opentelemetry-exporter-otlp-proto-common==1.21.0 \
+        opentelemetry-propagator-b3==1.21.0 \
+        opentelemetry-propagator-jaeger==1.21.0 \
+        opentelemetry-instrumentation-fastapi==0.42b0 \
+        opentelemetry-instrumentation-httpx==0.42b0 \
+        opentelemetry-instrumentation-asgi==0.42b0 \
+        opentelemetry-instrumentation==0.42b0 \
+        opentelemetry-semantic-conventions==0.42b0 \
+        opentelemetry-util-http==0.42b0 \
+    && pip install --no-cache-dir "git+https://github.com/project-unisonOS/unison-common.git@main" \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir pytest
 
 COPY src/ ./src/
-COPY models/ ./models/
+COPY tests/ ./tests/
+
+RUN useradd --create-home --shell /bin/bash unison && chown -R unison:unison /app
+USER unison
 
 EXPOSE 8081
-CMD ["python", "-m", "src.main"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8081/health || exit 1
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8081"]
 ```
 
 ### Docker Compose
 ```yaml
 context-graph:
-  build: .
+  build:
+    context: ../unison-context-graph
   ports:
     - "8081:8081"
   environment:
     - CONTEXT_DB_URL=postgresql://user:pass@postgres:5432/context_graph
     - INTENT_GRAPH_URL=http://unison-intent-graph:8080
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
   depends_on:
     - postgres
     - redis
     - influxdb
-  volumes:
-    - ./models:/app/models
-    - /var/run/docker.sock:/var/run/docker.sock  # For device monitoring
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8081/readyz"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
 ```
+
+### Durability & Privacy Endpoints
+- `GET /durability/status` — returns WAL/TTL/PII configuration and metrics
+- `POST /durability/run_ttl` — triggers TTL cleanup immediately
+- `POST /durability/run_pii` — triggers PII scrubbing immediately
+- `GET /metrics` — exposes durability counters (WAL checkpoints, TTL deletions, scrubs)
+- `GET /capabilities` — returns the current multimodal manifest snapshot
+- `POST /capabilities` — sets the current manifest (used by orchestrator capability publisher)
 
 ## Monitoring and Observability
 
