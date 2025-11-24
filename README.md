@@ -206,6 +206,14 @@ The context graph persists traces to SQLite with durability features from `uniso
 - **PII scrubbing**: Optional scrubbing (`DURABILITY_PII_AFTER_DAYS`, default 90) and `/durability/run_pii` to force a run.
 - **Metrics**: `/durability/status` returns WAL/TTL/PII status and `/metrics` returns durability counters (checkpoints, TTL deletes, scrubs).
 
+## Capability Manifests
+
+The context graph persists multimodal capability manifests in SQLite (`capabilities` table) and serves them via:
+- `GET /capabilities` → returns current manifest (seeded to an empty display list by default).
+- `POST /capabilities` → stores a new manifest; orchestrator publishes its manifest here on startup.
+
+Renderer fallback: when no manifest is available, the experience-renderer will synthesize a default display manifest to remain ready.
+
 Environment variables:
 - `CONTEXT_GRAPH_DB_PATH` – SQLite path (default `data/context_replay.db`)
 - `DURABILITY_WAL_ENABLED`, `DURABILITY_WAL_CHECKPOINT`, `DURABILITY_WAL_SYNC`
