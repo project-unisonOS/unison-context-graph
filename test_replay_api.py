@@ -11,9 +11,9 @@ import uuid
 import os
 import pytest
 
-# Skip this integration test in CI where backend services are not available
-if os.getenv("CI", "false").lower() == "true" or os.getenv("GITHUB_ACTIONS", "false").lower() == "true":
-    pytest.skip("Skipping integration tests in CI environment", allow_module_level=True)
+# Skip this integration test unless explicitly enabled (requires running service on localhost:8081)
+if os.getenv("RUN_CONTEXT_GRAPH_INTEGRATION", "false").lower() != "true":
+    pytest.skip("Skipping integration tests; set RUN_CONTEXT_GRAPH_INTEGRATION=true to enable", allow_module_level=True)
 
 # Configuration
 BASE_URL = "http://localhost:8081"
