@@ -214,6 +214,12 @@ The context graph persists multimodal capability manifests in SQLite (`capabilit
 
 Renderer fallback: when no manifest is available, the experience-renderer will synthesize a default display manifest to remain ready.
 
+### Onboarding flow
+- Probe devices (`scripts/multimodal_probe.py`) → produce manifest.
+- Orchestrator loads manifest on startup and posts to context-graph `/capabilities`.
+- Context-graph persists manifest in SQLite and serves `GET /capabilities`.
+- Experience-renderer fetches orchestrator `/capabilities`; if empty/unavailable, it falls back to a default display manifest to stay ready.
+
 Environment variables:
 - `CONTEXT_GRAPH_DB_PATH` – SQLite path (default `data/context_replay.db`)
 - `DURABILITY_WAL_ENABLED`, `DURABILITY_WAL_CHECKPOINT`, `DURABILITY_WAL_SYNC`
