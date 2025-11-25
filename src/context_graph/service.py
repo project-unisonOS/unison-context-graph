@@ -68,6 +68,15 @@ class ContextGraphService:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS capabilities_person (
+                person_id TEXT PRIMARY KEY,
+                manifest TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         # Seed default manifest if empty
         cur.execute("SELECT COUNT(*) FROM capabilities")
         count = cur.fetchone()[0]
@@ -152,25 +161,43 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
         return ContextStateResponse(state=state)
 
     @router.get("/capabilities")
-    async def get_capabilities() -> dict:
+    async def get_capabilities(person_id: str | None = None) -> dict:
+        if person_id:
+            conn = sqlite3.connect(service.db_path, check_same_thread=False)
+            cur = conn.cursor()
+            cur.execute("SELECT manifest FROM capabilities_person WHERE person_id=?", (person_id,))
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                try:
+                    return {"manifest": json.loads(row[0])}
+                except Exception:
+                    pass
         return {"manifest": service._capabilities}
 
     @router.post("/capabilities")
-    async def set_capabilities(manifest: dict = Body(...)) -> dict:
+    async def set_capabilities(manifest: dict = Body(...), person_id: str | None = None) -> dict:
         # minimal validation: must include modalities
         if not isinstance(manifest, dict) or "modalities" not in manifest:
             raise HTTPException(status_code=400, detail="Invalid manifest")
-        service._capabilities = manifest
         conn = sqlite3.connect(service.db_path, check_same_thread=False)
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO capabilities (id, manifest, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(id) DO UPDATE SET manifest=excluded.manifest, updated_at=excluded.updated_at",
-            (json.dumps(manifest),),
-        )
+        if person_id:
+            cur.execute(
+                "INSERT INTO capabilities_person (person_id, manifest, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(person_id) DO UPDATE SET manifest=excluded.manifest, updated_at=excluded.updated_at",
+                (person_id, json.dumps(manifest)),
+            )
+        else:
+            service._capabilities = manifest
+            cur.execute(
+                "INSERT INTO capabilities (id, manifest, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(id) DO UPDATE SET manifest=excluded.manifest, updated_at=excluded.updated_at",
+                (json.dumps(manifest),),
+            )
         conn.commit()
         conn.close()
-        return {"ok": True, "manifest": manifest}
+        return {"ok": True, "manifest": manifest, "person_id": person_id}
 
     @router.get("/durability/status")
     async def durability_status() -> dict:

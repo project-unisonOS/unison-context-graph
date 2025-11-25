@@ -8,14 +8,14 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
 
 def make_client(tmp_db):
     os.environ["CONTEXT_GRAPH_DB_PATH"] = tmp_db
     os.environ["DURABILITY_TTL_DAYS"] = "0"
     os.environ["DURABILITY_PII_AFTER_DAYS"] = "0"
-    import main as main
+    import main as main  # type: ignore
 
     importlib.reload(main)
     return TestClient(main.app)
@@ -93,3 +93,27 @@ def test_capabilities_round_trip():
         row = cur.fetchone()
         conn.close()
         assert row is not None
+
+
+def test_capabilities_per_person():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "db.sqlite")
+        client = make_client(db_path)
+
+        default_manifest = {"modalities": {"displays": [{"id": "global"}]}}
+        res = client.post("/capabilities", json=default_manifest)
+        assert res.status_code == 200
+
+        person_manifest = {"modalities": {"displays": [{"id": "person1"}]}}
+        res2 = client.post("/capabilities?person_id=p1", json=person_manifest)
+        assert res2.status_code == 200
+
+        # Global remains default
+        res_global = client.get("/capabilities")
+        assert res_global.status_code == 200
+        assert res_global.json()["manifest"]["modalities"]["displays"][0]["id"] == "global"
+
+        # Per-person fetch returns scoped manifest
+        res_person = client.get("/capabilities?person_id=p1")
+        assert res_person.status_code == 200
+        assert res_person.json()["manifest"]["modalities"]["displays"][0]["id"] == "person1"
