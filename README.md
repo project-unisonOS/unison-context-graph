@@ -1,5 +1,8 @@
 # Unison Context Graph Service
 
+## Status
+Core (active, early) — part of the new intent/context graph pipeline; runs on `8081` in devstack.
+
 ## Overview
 
 The Context Graph Service is a core component of Unison's real-time intent orchestration environment. It fuses multi-dimensional context data to enable intelligent decision-making, providing the environmental intelligence necessary for optimal intent execution and experience generation.
@@ -43,6 +46,29 @@ Context Graph Service
     ├── Subscription Service
     ├── Update Endpoints
     └── Analytics Interface
+```
+
+## Testing
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -c ../constraints.txt -r requirements.txt
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 OTEL_SDK_DISABLED=true python -m pytest
+```
+
+## Quickstart
+- Copy `.env.example` to `.env` to mirror devstack defaults.
+- Run locally: `python src/main.py` (defaults to port 8081).
+- Health endpoints: `/health`, `/readyz`.
+
+## Sample Flow
+```bash
+# Update context (example payload)
+curl -X POST http://localhost:8081/context/update \
+  -H "Content-Type: application/json" \
+  -d '{"context_update":{"person_id":"local-user","timestamp":"2024-01-01T12:00:00Z","context_sources":{"environmental":{"location":"office"},"device":{"active_applications":["browser"]}}}}'
+
+# Fetch readiness
+curl http://localhost:8081/readyz
 ```
 
 ## API Specification
