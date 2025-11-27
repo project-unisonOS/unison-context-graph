@@ -1,5 +1,8 @@
 # Unison Context Graph Service
 
+## Status
+Reference/archive — upstream snapshot kept for comparison; not used by devstack.
+
 ## Overview
 
 The Context Graph Service is a core component of Unison's real-time intent orchestration environment. It fuses multi-dimensional context data to enable intelligent decision-making, providing the environmental intelligence necessary for optimal intent execution and experience generation.
