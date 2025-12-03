@@ -19,6 +19,8 @@ from .models import (
     ContextUpdateRequest,
     EventTrace,
     ReplayRequest,
+    TraceListResponse,
+    TraceSearchRequest,
 )
 from .replay import ReplayStore, SQLiteReplayStore
 from unison_common.durability import DurabilityManager
@@ -130,6 +132,30 @@ class ContextGraphService:
             ContextState(user_id=request.user_id, preferences=ContextPreferences(), dimensions=[]),
         )
 
+    def search_traces(self, request: TraceSearchRequest) -> TraceListResponse:
+        """
+        Search recorded traces for a user by tags and time window.
+
+        This is a best-effort helper built on top of the SQLite replay store; it
+        filters events client-side based on metadata fields set by upstream
+        services (e.g., origin_intent, tags, created_at).
+        """
+        all_traces = self._sqlite_replay.list(request.user_id).traces
+        filtered: list[EventTrace] = []
+        required_tags = request.tags or []
+        since = request.since
+        for trace in all_traces:
+            meta = trace.metadata or {}
+            tags = meta.get("tags") or []
+            if required_tags:
+                if not isinstance(tags, list) or not any(t in tags for t in required_tags):
+                    continue
+            if since and trace.timestamp < since:
+                continue
+            filtered.append(trace)
+        limit = request.limit or 50
+        return TraceListResponse(traces=filtered[:limit])
+
 
 def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: object | None = None) -> None:
     router = APIRouter()
@@ -159,6 +185,10 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
     async def replay_trace(request: ReplayRequest) -> ContextStateResponse:
         state = service.replay(request)
         return ContextStateResponse(state=state)
+
+    @router.post("/traces/search", response_model=TraceListResponse)
+    async def search_traces(request: TraceSearchRequest) -> TraceListResponse:
+        return service.search_traces(request)
 
     @router.get("/capabilities")
     async def get_capabilities(person_id: str | None = None) -> dict:

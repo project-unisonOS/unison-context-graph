@@ -51,3 +51,12 @@ class ReplayRequest(BaseModel):
 
 class TraceListResponse(BaseModel):
     traces: List[EventTrace] = Field(default_factory=list)
+
+
+class TraceSearchRequest(BaseModel):
+    """Search criteria for traces stored in the replay store."""
+
+    user_id: str
+    tags: Optional[List[str]] = None
+    since: Optional[datetime] = None
+    limit: Optional[int] = 50
