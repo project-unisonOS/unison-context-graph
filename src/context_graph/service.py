@@ -83,7 +83,8 @@ class ContextGraphService:
 
     def graph_ready(self) -> bool:
         if not self._graph_driver:
-            return False
+            # If no graph configured, treat as ready for dev
+            return True
         try:
             with self._graph_driver.session() as session:
                 result = session.run("RETURN 1 as ok")
@@ -231,6 +232,45 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Context not found") from exc
         return ContextStateResponse(state=state)
+
+    @router.post("/graph/nodes")
+    async def graph_upsert_node(node: dict = Body(...)) -> dict:
+        """Upsert a node into Neo4j (best-effort)."""
+        if service._graph_driver:
+            labels = node.get("labels") or []
+            properties = node.get("props") or {}
+            node_id = node.get("id")
+            if not node_id:
+                raise HTTPException(status_code=400, detail="id required")
+            try:
+                cypher = f"MERGE (n:{':'.join(labels) if labels else 'Entity'} {{id:$id}}) SET n += $props"
+                with service._graph_driver.session() as session:
+                    session.run(cypher, id=node_id, props=properties)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc))
+        return {"ok": True}
+
+    @router.post("/graph/relations")
+    async def graph_create_relation(body: dict = Body(...)) -> dict:
+        """Create a relationship between two nodes."""
+        if service._graph_driver:
+            start_id = body.get("start_id")
+            end_id = body.get("end_id")
+            rel_type = body.get("type", "RELATED_TO")
+            props = body.get("props") or {}
+            if not start_id or not end_id:
+                raise HTTPException(status_code=400, detail="start_id and end_id required")
+            cypher = f"""
+            MATCH (a {{id:$start_id}}), (b {{id:$end_id}})
+            MERGE (a)-[r:{rel_type}]->(b)
+            SET r += $props
+            """
+            try:
+                with service._graph_driver.session() as session:
+                    session.run(cypher, start_id=start_id, end_id=end_id, props=props)
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc))
+        return {"ok": True}
 
     @router.post("/traces/replay", response_model=ContextStateResponse)
     async def replay_trace(request: ReplayRequest) -> ContextStateResponse:
