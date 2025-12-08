@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,10 +46,20 @@ logger = logging.getLogger(__name__)
 
 settings = ContextGraphSettings.from_env()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    try:
+        context_service._sqlite_replay.close()
+    except Exception:
+        logger.exception("Failed to close replay store cleanly during shutdown")
+
+
 app = FastAPI(
     title="Unison Context Graph Service",
     description="Real-time context fusion and environmental intelligence",
     version="1.0.0",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -65,14 +76,6 @@ register_routes(app, context_service, baton_manager=baton_manager)
 if BatonMiddleware:
     app.add_middleware(BatonMiddleware)
 
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    # Gracefully stop background durability jobs and close SQLite connections.
-    try:
-        context_service._sqlite_replay.close()
-    except Exception:
-        logger.exception("Failed to close replay store cleanly during shutdown")
 
 __all__ = [
     "app",
