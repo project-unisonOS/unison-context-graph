@@ -24,6 +24,7 @@ from .models import (
 )
 from .replay import ReplayStore, SQLiteReplayStore
 from unison_common.durability import DurabilityManager
+from datetime import datetime
 
 
 @dataclass
@@ -57,6 +58,7 @@ class ContextGraphService:
         self._capabilities: Dict[str, object] = {"modalities": {"displays": []}}
         self._ensure_capabilities_table()
         self._load_capabilities_from_store()
+        self._telemetry_topic = "actuation.lifecycle"
 
     def _ensure_capabilities_table(self) -> None:
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -123,6 +125,13 @@ class ContextGraphService:
             raise KeyError(request.user_id)
         return self._states[request.user_id]
 
+    def record_actuation_event(self, payload: dict) -> None:
+        """Record an actuation lifecycle event into replay stores."""
+        user_id = payload.get("person_id") or "unknown"
+        event = EventTrace(event=self._telemetry_topic, metadata=payload)
+        self._replay.record(user_id, [event])
+        self._sqlite_replay.record(user_id, [event])
+
     def replay(self, request: ReplayRequest) -> ContextState:
         # Store the replay trace and return latest known state.
         self._replay.apply(request)
@@ -167,6 +176,15 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
     @router.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @router.post("/telemetry/actuation")
+    async def telemetry_actuation(event: dict = Body(...)) -> dict:
+        """Record actuation lifecycle telemetry (best effort)."""
+        try:
+            service.record_actuation_event(event)
+            return {"ok": True}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @router.post("/context/update", response_model=ContextStateResponse)
     async def update_context(request: ContextUpdateRequest) -> ContextStateResponse:
