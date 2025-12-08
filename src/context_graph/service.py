@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Body
+from neo4j import GraphDatabase, basic_auth
 
 from .models import (
     ContextPreferences,
@@ -32,6 +33,9 @@ class ContextGraphSettings:
     host: str = "0.0.0.0"
     port: int = 8081
     allowed_origins: Optional[list[str]] = None
+    graph_uri: Optional[str] = None
+    graph_user: Optional[str] = None
+    graph_password: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "ContextGraphSettings":
@@ -39,7 +43,10 @@ class ContextGraphSettings:
         port = int(os.getenv("CONTEXT_GRAPH_PORT", str(cls.port)))
         origins = os.getenv("ALLOWED_ORIGINS")
         allowed = [o.strip() for o in origins.split(",")] if origins else None
-        return cls(host=host, port=port, allowed_origins=allowed)
+        graph_uri = os.getenv("GRAPH_DB_URI")
+        graph_user = os.getenv("GRAPH_DB_USER")
+        graph_password = os.getenv("GRAPH_DB_PASSWORD")
+        return cls(host=host, port=port, allowed_origins=allowed, graph_uri=graph_uri, graph_user=graph_user, graph_password=graph_password)
 
 
 # Backwards-compatible alias used by the FastAPI entrypoint.
@@ -59,6 +66,30 @@ class ContextGraphService:
         self._ensure_capabilities_table()
         self._load_capabilities_from_store()
         self._telemetry_topic = "actuation.lifecycle"
+        self._graph_driver = self._init_graph_driver()
+
+    def _init_graph_driver(self):
+        if not self.settings.graph_uri or not self.settings.graph_user or not self.settings.graph_password:
+            return None
+        try:
+            driver = GraphDatabase.driver(
+                self.settings.graph_uri,
+                auth=basic_auth(self.settings.graph_user, self.settings.graph_password),
+                max_connection_lifetime=60,
+            )
+            return driver
+        except Exception:
+            return None
+
+    def graph_ready(self) -> bool:
+        if not self._graph_driver:
+            return False
+        try:
+            with self._graph_driver.session() as session:
+                result = session.run("RETURN 1 as ok")
+                return bool(result.single().get("ok"))
+        except Exception:
+            return False
 
     def _ensure_capabilities_table(self) -> None:
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -171,7 +202,9 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
 
     @router.get("/readyz")
     async def readyz() -> dict[str, str]:
-        return {"status": "ok"}
+        graph_ok = service.graph_ready() if service.settings.graph_uri else True
+        status = "ok" if graph_ok else "degraded"
+        return {"status": status, "graph": graph_ok}
 
     @router.get("/healthz")
     async def healthz() -> dict[str, str]:

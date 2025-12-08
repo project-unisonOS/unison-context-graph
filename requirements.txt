@@ -11,6 +11,7 @@ structlog==22.2.0
 prometheus-client==0.19.0
 numpy==1.26.4
 scikit-learn==1.5.2
+neo4j==5.25.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-cov==4.1.0
