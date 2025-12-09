@@ -202,7 +202,7 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
     router = APIRouter()
 
     @router.get("/readyz")
-    async def readyz() -> dict[str, str]:
+    async def readyz() -> dict[str, object]:
         graph_ok = service.graph_ready() if service.settings.graph_uri else True
         status = "ok" if graph_ok else "degraded"
         return {"status": status, "graph": graph_ok}
