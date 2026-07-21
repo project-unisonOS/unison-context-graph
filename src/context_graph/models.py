@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class ContextDimension(BaseModel):
@@ -21,7 +25,7 @@ class ContextState(BaseModel):
     user_id: str
     dimensions: List[ContextDimension] = Field(default_factory=list)
     preferences: ContextPreferences = Field(default_factory=ContextPreferences)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class ContextUpdateRequest(BaseModel):
@@ -39,7 +43,7 @@ class ContextStateResponse(BaseModel):
 
 
 class EventTrace(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     event: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
 

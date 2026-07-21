@@ -77,6 +77,19 @@ if BatonMiddleware:
     app.add_middleware(BatonMiddleware)
 
 
+@app.get("/authority")
+def authority():
+    """Declare the Phase 2 ownership boundary for callers and operators."""
+    return {
+        "authoritative_service": "unison-context",
+        "authoritative_api": "/v2",
+        "this_service": "operational-context-adapter",
+        "durable_personal_memory": False,
+        "relationship_access_grants": False,
+        "allowed_data": ["ephemeral_environmental_state", "replay_telemetry", "capability_manifest", "actuation_telemetry"],
+    }
+
+
 __all__ = [
     "app",
     "Config",

@@ -1,9 +1,13 @@
 # unison-context-graph
 
-Context-state, replay, capability-manifest, and actuation-telemetry service for UnisonOS.
+Operational context-state, replay, capability-manifest, and actuation-telemetry adapter for UnisonOS.
 
 ## Status
-Core service (active, early). The current code lives in `src/main.py` and `src/context_graph/`, with state held in memory and replay/capability data persisted to SQLite.
+Active adapter. As of Phase 2, `unison-context` and its `/v2` governed repository
+are authoritative for relationships, context spaces, memory, charters, goals,
+commitments, membership, retention, and export. This service may retain bounded
+operational/replay data, but it must not become an independent personal-memory
+authority or infer access from a relationship edge.
 
 ## What is implemented
 - `ContextGraphService` for per-user context state updates and queries.
@@ -15,6 +19,7 @@ Core service (active, early). The current code lives in `src/main.py` and `src/c
 
 ## API surface
 - `GET /healthz`
+- `GET /authority`
 - `GET /readyz`
 - `POST /telemetry/actuation`
 - `POST /context/update`
