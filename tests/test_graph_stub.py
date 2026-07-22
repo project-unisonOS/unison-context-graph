@@ -26,6 +26,12 @@ def test_readyz_without_graph():
     assert body["graph"] is True or body["status"] in {"ok", "degraded"}
 
 
+def test_platform_health_contract():
+    response = TestClient(app).get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_graph_node_stub():
     client = TestClient(app)
     resp = client.post("/graph/nodes", json={"id": "person-1", "labels": ["Person"], "props": {"name": "Test"}})

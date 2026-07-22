@@ -211,6 +211,11 @@ def register_routes(app: FastAPI, service: ContextGraphService, baton_manager: o
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    @router.get("/health")
+    async def health() -> dict[str, str]:
+        """Platform-standard liveness endpoint used by publication contracts."""
+        return {"status": "ok"}
+
     @router.post("/telemetry/actuation")
     async def telemetry_actuation(event: dict = Body(...)) -> dict:
         """Record actuation lifecycle telemetry (best effort)."""
